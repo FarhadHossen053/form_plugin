@@ -3,7 +3,7 @@
 Plugin Name: Form Plugin
 Description: A plugin that registers a shortcode to display a form for creating posts and sending emails.
 Version: 1.0
-Author:Farhad Hossen
+Author: Farhad Hossen
 Author URI: https://farhadhossen.com
 */
 

@@ -1,0 +1,111 @@
+<?php
+/*
+Plugin Name: Form Plugin
+Description: A plugin that registers a shortcode to display a form for creating posts and sending emails.
+Version: 1.0
+Author:Farhad Hossen
+Author URI: https://farhadhossen.com
+*/
+
+add_shortcode( 'post_form', 'post_form_shortcode' );
+
+function post_form_shortcode() {
+
+
+    if ( isset( $_POST['post_form_submit'] ) ) {
+            post_form_process();
+    }else{
+        post_form_display();
+    }
+
+}
+function post_form_display() {
+    $current_user = wp_get_current_user();
+    $post_title = isset( $_POST['post_title'] ) ? $_POST['post_title'] : '';
+    $post_content = isset( $_POST['post_content'] ) ? $_POST['post_content'] : '';
+    $user_name = isset( $_POST['user_name'] ) ? $_POST['user_name'] : $current_user->display_name;
+    $user_email = isset( $_POST['user_email'] ) ? $_POST['user_email'] : $current_user->user_email;
+    if ( ! empty( $_GET['post_form_error'] ) ) {
+        echo '<p class="post-form-error">' . esc_html( $_GET['post_form_error'] ) . '</p>';
+    }
+
+    if ( ! empty( $_GET['post_form_success'] ) ) {
+        echo '<p class="post-form-success">' . esc_html( $_GET['post_form_success'] ) . '</p>';
+    }
+
+    echo '<form id="post-form" method="post" action="">';
+    echo '<p><label for="post_title">Post Title</label><br />';
+    echo '<input type="text" id="post_title" name="post_title" value="' . esc_attr( $post_title ) . '" required /></p>';
+    echo '<p><label for="post_content">Post Content</label><br />';
+    echo '<textarea id="post_content" name="post_content" rows="10" cols="50" required>' . esc_textarea( $post_content ) . '</textarea></p>';
+    echo '<p><label for="user_name">Your Name</label><br />';
+    echo '<input type="text" id="user_name" name="user_name" value="' . esc_attr( $user_name ) . '" required /></p>';
+    echo '<p><label for="user_email">Your Email Address</label><br />';
+    echo '<input type="email" id="user_email" name="user_email" value="' . esc_attr( $user_email ) . '" required /></p>';
+    wp_nonce_field( 'post_form_nonce', 'post_form_nonce_field' );
+    echo '<input type="hidden" name="post_form_submit" value="1" />';
+    echo '<p><input type="submit" value="Create Post and Send Email" /></p>';
+    echo '</form>';
+}
+
+function post_form_process() {
+
+    if ( ! isset( $_POST['post_form_nonce_field'] ) || ! wp_verify_nonce( $_POST['post_form_nonce_field'], 'post_form_nonce' ) ) {
+        return;
+    }
+
+    $post_title = sanitize_text_field( $_POST['post_title'] );
+    $post_content = wp_kses_post( $_POST['post_content'] );
+    $user_name = sanitize_text_field( $_POST['user_name'] );
+    $user_email = sanitize_email( $_POST['user_email'] );
+
+    if ( empty( $post_title ) || empty( $post_content ) || empty( $user_name ) || empty( $user_email ) ) {
+        wp_redirect( add_query_arg( 'post_form_error', 'Please fill in all the fields.', get_permalink() ) );
+        exit;
+    }
+
+    if ( ! is_email( $user_email ) ) {
+        wp_redirect( add_query_arg( 'post_form_error', 'Please enter a valid email address.', get_permalink() ) );
+        exit;
+    }
+
+    if ( is_user_logged_in() ) {
+        $user_id = get_current_user_id();
+    } 
+
+    if ( ! $user_id ) {
+        $user_id = wp_create_user( $user_email, wp_generate_password(), $user_email );
+        if ( is_wp_error( $user_id ) ) {
+            wp_redirect( add_query_arg( 'post_form_error', 'Failed to create a new user.', get_permalink() ) );
+            exit;
+        }
+        wp_update_user( array(
+            'ID' => $user_id,
+            'display_name' => $user_name,
+            'role' => 'subscriber'
+        ) );
+    }
+
+    $post_id = wp_insert_post( array(
+        'post_title' => $post_title,
+        'post_content' => $post_content,
+        'post_status' => 'publish',
+        'post_author' => $user_id
+    ) );
+
+    if ( ! $post_id ) {
+        wp_redirect( add_query_arg( 'post_form_error', 'Failed to create a new post.', get_permalink() ) );
+        exit;
+    }
+
+    $post_url = get_permalink( $post_id );
+    $subject = 'Your post has been published';
+    $message = "Hi {$user_name},\n\n";
+    $message .= "Your post titled '{$post_title}' has been published on our website.\n\n";
+    $message .= "You can view it here: {$post_url}\n\n";
+    $message .= "Thank you for your contribution!";
+    wp_mail( $user_email, $subject, $message );
+
+    wp_redirect( add_query_arg( 'post_form_success', 'Your post has been created and an email has been sent to you.', get_permalink() ) );
+    exit;
+}
